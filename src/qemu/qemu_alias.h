@@ -78,6 +78,10 @@ int qemuDomainDeviceAliasIndex(const virDomainDeviceInfo *info,
 
 char *qemuAliasDiskDriveFromDisk(const virDomainDiskDef *disk);
 
+char *qemuAliasDiskDriveQuorumFromDisk(const virDomainDiskDef *disk);
+
+char *qemuAliasReplicationActiveFromDisk(const virDomainDiskDef *disk);
+
 const char *qemuAliasDiskDriveSkipPrefix(const char *dev_name);
 
 char *qemuAliasFromHostdev(const virDomainHostdevDef *hostdev);

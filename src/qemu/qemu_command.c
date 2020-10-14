@@ -2582,8 +2582,7 @@ qemuBuildDiskSourceCommandLine(virCommandPtr cmd,
 
 
 static char *
-qemuBuildDiskQuorumCommandLine(virCommandPtr cmd,
-                               virDomainDiskDefPtr disk,
+qemuBuildDiskQuorumCommandLine(virDomainDiskDefPtr disk,
                                virQEMUCapsPtr qemuCaps)
 {
     virBuffer opt = VIR_BUFFER_INITIALIZER;
@@ -2635,7 +2634,7 @@ qemuBuildDiskCommandLine(virCommandPtr cmd,
 
     if(disk->quorum)
     {
-        if (!(optstr = qemuBuildDiskQuorumCommandLine(cmd, disk, qemuCaps)))
+        if (!(optstr = qemuBuildDiskQuorumCommandLine(disk, qemuCaps)))
             return -1;
         virCommandAddArg(cmd, optstr);
         VIR_FREE(optstr);

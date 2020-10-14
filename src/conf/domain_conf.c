@@ -9423,7 +9423,7 @@ virDomainDiskDefDriverParseXML(virDomainDiskDefPtr def,
         if(def->device == VIR_DOMAIN_DISK_DEVICE_CDROM || def->device == VIR_DOMAIN_DISK_DEVICE_FLOPPY)
         {
             virReportError(VIR_ERR_XML_ERROR,
-                           _("'quorum' attribute must be with disk device 'disk' or 'lun'");
+                           _("'quorum' attribute must be with disk device 'disk' or 'lun'"));
             goto cleanup;
         }
         if (STREQ(tmp, "on")) {
@@ -9721,7 +9721,7 @@ virDomainDiskDefParseXML(virDomainXMLOptionPtr xmlopt,
             if(def->device == VIR_DOMAIN_DISK_DEVICE_CDROM || def->device == VIR_DOMAIN_DISK_DEVICE_FLOPPY)
             {
                 virReportError(VIR_ERR_XML_ERROR,
-                               _("'replication' only support disk device 'disk' or 'lun'");
+                               _("'replication' only support disk device 'disk' or 'lun'"));
                 goto cleanup;
             }
             if ((tmp = virXMLPropString(cur, "mode")) &&

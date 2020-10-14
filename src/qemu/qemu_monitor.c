@@ -3488,7 +3488,7 @@ qemuMonitorBlockDevChange(qemuMonitorPtr mon,
 
     QEMU_CHECK_MONITOR(mon);
 
-    return qemuMonitorJSONBlockDevChange(mon, jobname);
+    return qemuMonitorJSONBlockDevChange(mon, parent, node);
 }
 
 

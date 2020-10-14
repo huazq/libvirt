@@ -3365,7 +3365,7 @@ qemuBuildDiskSourceReplicationPrimaryOptions(virDomainDiskDefPtr disk,
 
     virBufferAddLit(&opt, "-n buddy driver=replication,mode=primary");
 
-    virBufferAddLit(&opt, ",file.driver=nbd,file.host=%s,file.port=%d", host, port);
+    virBufferAsprintf(&opt, ",file.driver=nbd,file.host=%s,file.port=%d", host, port);
 
     if (disk->quorum) {
         if (!(backendAlias = qemuAliasDiskDriveQuorumFromDisk(disk)))
@@ -3398,15 +3398,14 @@ qemuMigrationSrcDiskAddReplicationDrive(virQEMUDriverPtr driver,
                                         char* drvstr)
 {
     char* parent = NULL; //TODO:get parent disk id use qemuAliasDiskDriveQuorumFromDisk
-    char* node = "node0";  //TODO: get child disk node name use API
+    const char* node = "node0";  //TODO: get child disk node name use API
     qemuDomainObjPrivatePtr priv = vm->privateData;
     int ret = -1;
 
     if(!drvstr)
         return ret;
 
-    if (qemuDomainObjEnterMonitorAsync(driver, vm) < 0)
-        return ret;
+    qemuDomainObjEnterMonitor(driver, vm); 
 
     if (qemuMonitorAddDrive(priv->mon, drvstr) < 0)
         goto exit_monitor;
@@ -3414,7 +3413,7 @@ qemuMigrationSrcDiskAddReplicationDrive(virQEMUDriverPtr driver,
     if (qemuMonitorBlockDevChange(priv->mon, parent, node) < 0)
         goto exit_monitor;
 
-        ret = 0;
+    ret = 0;
 
 exit_monitor:
     ignore_value(qemuDomainObjExitMonitor(driver, vm));
@@ -3437,8 +3436,6 @@ qemuMigrationSrcStartBlcokReplication(virQEMUDriverPtr driver,
         char *drvstr = NULL;
         char *diskAlias = NULL;
         virDomainDiskDefPtr disk = vm->def->disks[i];
-        qemuDomainDiskPrivatePtr diskPriv = QEMU_DOMAIN_DISK_PRIVATE(disk);
-        int rc;
 
         if (!(diskAlias = qemuAliasDiskDriveFromDisk(disk)))
             continue;
@@ -3584,7 +3581,7 @@ qemuMigrationSrcRun(virQEMUDriverPtr driver,
     if (migrate_flags & (QEMU_MONITOR_MIGRATE_NON_SHARED_DISK |
                          QEMU_MONITOR_MIGRATE_NON_SHARED_INC)) {
         if (mig->nbd) {
-            char* host = spec->dest.host.name;
+            const char* host = spec->dest.host.name;
             int port = mig->nbd->port;
 
             /* Currently libvirt does not support setting up of the NBD

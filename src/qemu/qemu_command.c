@@ -2122,8 +2122,15 @@ qemuBuildDiskDeviceStr(const virDomainDef *def,
         virQEMUCapsGet(qemuCaps, QEMU_CAPS_DISK_SHARE_RW))
         virBufferAddLit(&opt, ",share-rw=on");
 
-    if (qemuDomainDiskGetBackendAlias(disk, qemuCaps, &backendAlias) < 0)
-        goto error;
+    if (disk->quorum) {
+        if (!(backendAlias = qemuAliasDiskDriveQuorumFromDisk(disk)))
+            goto error;
+    }
+    else
+    {
+        if (qemuDomainDiskGetBackendAlias(disk, qemuCaps, &backendAlias) < 0)
+            goto error;
+    }
 
     if (backendAlias)
         virBufferAsprintf(&opt, ",drive=%s", backendAlias);
@@ -2393,6 +2400,110 @@ qemuBuildBlockStorageSourceAttachDataCommandline(virCommandPtr cmd,
 
 
 static int
+qemuBuildDiskSourceReplicationSecondaryOptions(virCommandPtr cmd,
+                                         virDomainDiskDefPtr disk,
+                                         virQEMUCapsPtr qemuCaps)
+{
+    virBuffer opt = VIR_BUFFER_INITIALIZER;
+    qemuDomainStorageSourcePrivatePtr srcpriv;
+    qemuDomainSecretInfoPtr secinfo = NULL;
+    virStorageSourcePtr active;
+    virStorageSourcePtr hidden;
+    char *activeAlias = NULL;
+    char *backendAlias = NULL;
+    char *optstr = NULL;
+    char *source = NULL;
+    int ret = -1;
+
+    if (disk->device == VIR_DOMAIN_DISK_DEVICE_FLOPPY ||
+        disk->device == VIR_DOMAIN_DISK_DEVICE_CDROM) {
+        goto cleanup;
+    }
+
+    if (!disk->src->backingStore || 
+        virStorageSourceIsEmpty(disk->src->backingStore)) {
+        goto cleanup;
+    }
+    active = disk->src->backingStore;
+
+    if (!active->backingStore || 
+        virStorageSourceIsEmpty(active->backingStore)) {
+        goto cleanup;
+    }
+    hidden =active->backingStore;
+
+    virBufferAddLit(&opt, "-drive if=none");
+
+    if(disk->quorum)
+    {
+        if(!(activeAlias = qemuAliasDiskDriveQuorumFromDisk(disk)))
+            goto cleanup;
+    }
+    else
+    {
+        if(!(activeAlias = qemuAliasReplicationActiveFromDisk(disk)))
+            goto cleanup;
+    }
+
+    virBufferAsprintf(&opt, ",id=%s", activeAlias);
+    virBufferAsprintf(&opt, ",driver=replication,mode=secondary,top-id=%s", activeAlias);
+    VIR_FREE(activeAlias);
+
+    srcpriv = QEMU_DOMAIN_STORAGE_SOURCE_PRIVATE(active);
+    if (srcpriv) {
+        secinfo = srcpriv->secinfo;
+    }
+    if (qemuGetDriveSourceString(active, secinfo, &source) < 0)
+        goto cleanup;
+    
+    if(!source)
+    {
+        goto cleanup;
+    }
+
+    virBufferAddLit(&opt, ",file.file.filename=");
+    virQEMUBuildBufferEscapeComma(&opt, source);
+    VIR_FREE(source);
+
+    virBufferAsprintf(&opt, ",file.driver=%s",
+                    virStorageFileFormatTypeToString(active->format));
+
+    srcpriv = QEMU_DOMAIN_STORAGE_SOURCE_PRIVATE(hidden);
+    if (srcpriv) {
+        secinfo = srcpriv->secinfo;
+    }
+    if (qemuGetDriveSourceString(hidden, secinfo, &source) < 0)
+        goto cleanup;
+    
+    if(!source)
+    {
+        goto cleanup;
+    }
+    virBufferAddLit(&opt, ",file.backing.file.filename=");
+    virQEMUBuildBufferEscapeComma(&opt, source);
+    VIR_FREE(source);
+    virBufferAsprintf(&opt, "file.backing.driver=%s",
+                      virStorageFileFormatTypeToString(hidden->format));
+
+    if (qemuDomainDiskGetBackendAlias(disk, qemuCaps, &backendAlias) < 0)
+        goto cleanup;
+
+    if (backendAlias)
+    {
+        virBufferAsprintf(&opt, ",file.backing.backing=%s",backendAlias);
+        VIR_FREE(backendAlias);
+    }
+    
+    virCommandAddArg(cmd, optstr);
+    VIR_FREE(optstr);
+
+    
+ cleanup:
+    return ret;
+}
+
+
+static int
 qemuBuildDiskSourceCommandLine(virCommandPtr cmd,
                                virDomainDiskDefPtr disk,
                                virQEMUCapsPtr qemuCaps)
@@ -2405,7 +2516,6 @@ qemuBuildDiskSourceCommandLine(virCommandPtr cmd,
     char *str = NULL;
     size_t i;
     int ret = -1;
-
     if (virQEMUCapsGet(qemuCaps, QEMU_CAPS_BLOCKDEV)) {
         if (virStorageSourceIsEmpty(disk->src)) {
             ret = 0;
@@ -2452,6 +2562,12 @@ qemuBuildDiskSourceCommandLine(virCommandPtr cmd,
         VIR_FREE(str);
     }
 
+    if(disk->src->replication_mode != VIR_STORAGE_REPLICATION_MODE_NONE)
+    {
+         if(qemuBuildDiskSourceReplicationSecondaryOptions(cmd, disk, qemuCaps) < 0)
+         goto cleanup;
+    }
+
     ret = 0;
 
  cleanup:
@@ -2462,6 +2578,46 @@ qemuBuildDiskSourceCommandLine(virCommandPtr cmd,
     virJSONValueFree(copyOnReadProps);
     VIR_FREE(str);
     return ret;
+}
+
+
+static char *
+qemuBuildDiskQuorumCommandLine(virCommandPtr cmd,
+                               virDomainDiskDefPtr disk,
+                               virQEMUCapsPtr qemuCaps)
+{
+    virBuffer opt = VIR_BUFFER_INITIALIZER;
+    char *backendAlias = NULL;
+    char *quorumAlias = NULL;
+
+    virBufferAddLit(&opt, "-drive if=none");
+
+    if(!(quorumAlias = qemuAliasDiskDriveQuorumFromDisk(disk)))
+        goto error;
+    virBufferAsprintf(&opt, ",id=%s", quorumAlias);
+    VIR_FREE(quorumAlias);
+
+    virBufferAddLit(&opt, ",driver=quorum,read-pattern=fifo,vote-threshold=1");
+
+    if (qemuDomainDiskGetBackendAlias(disk, qemuCaps, &backendAlias) < 0)
+        goto error;
+
+    if (backendAlias)
+    {
+        virBufferAsprintf(&opt, ",children.0=%s", backendAlias);
+        VIR_FREE(backendAlias);
+    }
+
+    if (virBufferCheckError(&opt) < 0)
+        goto error;
+
+    return virBufferContentAndReset(&opt);
+
+ error:
+    VIR_FREE(quorumAlias);
+    VIR_FREE(backendAlias);
+    virBufferFreeAndReset(&opt);
+    return NULL;
 }
 
 
@@ -2476,6 +2632,14 @@ qemuBuildDiskCommandLine(virCommandPtr cmd,
 
     if (qemuBuildDiskSourceCommandLine(cmd, disk, qemuCaps) < 0)
         return -1;
+
+    if(disk->quorum)
+    {
+        if (!(optstr = qemuBuildDiskQuorumCommandLine(cmd, disk, qemuCaps)))
+            return -1;
+        virCommandAddArg(cmd, optstr);
+        VIR_FREE(optstr);
+    }       
 
     if (!qemuDiskBusNeedsDriveArg(disk->bus)) {
         if (disk->bus != VIR_DOMAIN_DISK_BUS_FDC ||

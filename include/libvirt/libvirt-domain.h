@@ -830,6 +830,11 @@ typedef enum {
      * destination, the migration will fail.
      */
     VIR_MIGRATE_TLS               = (1 << 16),
+         /* Setting the VIR_MIGRATE_COLO flag cause the migration become to vm
+     * replication
+     */
+    VIR_MIGRATE_COLO               = (1 << 17)
+
 
 } virDomainMigrateFlags;
 

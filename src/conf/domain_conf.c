@@ -9419,6 +9419,24 @@ virDomainDiskDefDriverParseXML(virDomainDiskDefPtr def,
     }
     VIR_FREE(tmp);
 
+    if ((tmp = virXMLPropString(cur, "quorum"))) {
+        if(def->device == VIR_DOMAIN_DISK_DEVICE_CDROM || def->device == VIR_DOMAIN_DISK_DEVICE_FLOPPY)
+        {
+            virReportError(VIR_ERR_XML_ERROR,
+                           _("'quorum' attribute must be with disk device 'disk' or 'lun'");
+            goto cleanup;
+        }
+        if (STREQ(tmp, "on")) {
+            def->quorum = true;
+        }
+        else
+        {
+            def->quorum = false;
+        }
+        
+        VIR_FREE(tmp);
+    }
+
     ret = 0;
 
  cleanup:
@@ -9698,7 +9716,22 @@ virDomainDiskDefParseXML(virDomainXMLOptionPtr xmlopt,
             }
         } else if (virXMLNodeNameEqual(cur, "boot")) {
             /* boot is parsed as part of virDomainDeviceInfoParseXML */
-        }
+        } else if (!(flags & VIR_DOMAIN_DEF_PARSE_DISK_SOURCE) &&
+                   virXMLNodeNameEqual(cur, "replication")) {
+            if(def->device == VIR_DOMAIN_DISK_DEVICE_CDROM || def->device == VIR_DOMAIN_DISK_DEVICE_FLOPPY)
+            {
+                virReportError(VIR_ERR_XML_ERROR,
+                               _("'replication' only support disk device 'disk' or 'lun'");
+                goto cleanup;
+            }
+            if ((tmp = virXMLPropString(cur, "mode")) &&
+                (def->src->replication_mode = virStorageReplicationModeTypeFromString(tmp)) <= 0) {
+                virReportError(VIR_ERR_CONFIG_UNSUPPORTED,
+                               _("unknown replication mode '%s'"), tmp);
+                goto error;
+            }
+            VIR_FREE(tmp);
+        } 
     }
 
     /* Only CDROM and Floppy devices are allowed missing source path

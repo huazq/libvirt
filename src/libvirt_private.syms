@@ -2924,6 +2924,8 @@ virStorageSourceUpdateCapacity;
 virStorageSourceUpdatePhysicalSize;
 virStorageTypeFromString;
 virStorageTypeToString;
+virStorageReplicationModeTypeFromString;
+virStorageReplicationModeTypeToString;
 
 
 # util/virstoragefilebackend.h

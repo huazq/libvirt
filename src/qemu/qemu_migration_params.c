@@ -86,6 +86,7 @@ VIR_ENUM_IMPL(qemuMigrationCapability, QEMU_MIGRATION_CAP_LAST,
               "compress",
               "pause-before-switchover",
               "late-block-activate",
+              "x-colo",
 );
 
 
@@ -149,6 +150,10 @@ static const qemuMigrationParamsFlagMapItem qemuMigrationParamsFlagMap[] = {
     {VIR_MIGRATE_POSTCOPY,
      QEMU_MIGRATION_CAP_POSTCOPY,
      QEMU_MIGRATION_SOURCE | QEMU_MIGRATION_DESTINATION},
+
+    {VIR_MIGRATE_COLO,
+     QEMU_MIGRATION_CAP_COLO,
+     QEMU_MIGRATION_SOURCE},
 };
 
 /* Translation from VIR_MIGRATE_PARAM_* typed parameters to

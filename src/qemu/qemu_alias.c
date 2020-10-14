@@ -27,6 +27,8 @@
 #include "virstring.h"
 
 #define QEMU_DRIVE_HOST_PREFIX "drive-"
+#define QEMU_DRIVE_QUORUM_HOST_PREFIX "quorum-"
+#define QEMU_DRIVE_REPLICATION_ACTIVE_HOST_PREFIX "active-"
 
 #define VIR_FROM_THIS VIR_FROM_QEMU
 
@@ -705,6 +707,55 @@ qemuAliasDiskDriveFromDisk(const virDomainDiskDef *disk)
     }
 
     ignore_value(virAsprintf(&ret, "%s%s", QEMU_DRIVE_HOST_PREFIX,
+                             disk->info.alias));
+
+    return ret;
+}
+
+/* qemuAliasDiskDriveQuorumFromDisk
+ * @disk: Pointer to a disk definition
+ *
+ * Generate and return an alias for the device disk with 
+ * quorum driver '-drive driver=quorum,'
+ * Returns NULL with error or a string containing the alias
+ */
+char *
+qemuAliasDiskDriveQuorumFromDisk(const virDomainDiskDef *disk)
+{
+    char *ret;
+
+    if (!disk->info.alias) {
+        virReportError(VIR_ERR_INVALID_ARG, "%s",
+                       _("disk does not have an alias"));
+        return NULL;
+    }
+
+    ignore_value(virAsprintf(&ret, "%s%s", QEMU_DRIVE_QUORUM_HOST_PREFIX,
+                             disk->info.alias));
+
+    return ret;
+}
+
+
+/* qemuAliasReplicationBackingFromDisk
+ * @disk: Pointer to a disk definition
+ *
+ * Generate and return an alias for disk which is 
+ * backing of backing of disk with replication driver
+ * Returns NULL with error or a string containing the alias
+ */
+char *
+qemuAliasReplicationActiveFromDisk(const virDomainDiskDef *disk)
+{
+    char *ret;
+
+    if (!disk->info.alias) {
+        virReportError(VIR_ERR_INVALID_ARG, "%s",
+                       _("disk does not have an alias"));
+        return NULL;
+    }
+
+    ignore_value(virAsprintf(&ret, "%s%s", QEMU_DRIVE_REPLICATION_ACTIVE_HOST_PREFIX,
                              disk->info.alias));
 
     return ret;

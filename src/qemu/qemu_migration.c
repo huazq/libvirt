@@ -3353,6 +3353,116 @@ qemuMigrationSrcContinue(virQEMUDriverPtr driver,
 }
 
 
+static char *
+qemuBuildDiskSourceReplicationPrimaryOptions(virDomainDiskDefPtr disk,
+                                             virQEMUCapsPtr qemuCaps,
+                                             const char *host,
+                                             int port)
+{
+    virBuffer opt = VIR_BUFFER_INITIALIZER;
+    char *backendAlias = NULL;
+    char *nodename = NULL;
+
+    virBufferAddLit(&opt, "-n buddy driver=replication,mode=primary");
+
+    virBufferAddLit(&opt, ",file.driver=nbd,file.host=%s,file.port=%d", host, port);
+
+    if (disk->quorum) {
+        if (!(backendAlias = qemuAliasDiskDriveQuorumFromDisk(disk)))
+            goto error;
+    }
+    else
+    {
+        if (qemuDomainDiskGetBackendAlias(disk, qemuCaps, &backendAlias) < 0)
+            goto error;
+    }
+    
+    virBufferAsprintf(&opt, ",file.export=%s,node-name=%s", backendAlias, nodename);
+    VIR_FREE(backendAlias);
+
+    if (virBufferCheckError(&opt) < 0)
+        goto error;
+
+    return virBufferContentAndReset(&opt);
+
+ error:
+    VIR_FREE(backendAlias);
+    virBufferFreeAndReset(&opt);
+    return NULL;
+}
+
+
+static int
+qemuMigrationSrcDiskAddReplicationDrive(virQEMUDriverPtr driver,
+                                        virDomainObjPtr vm,
+                                        char* drvstr)
+{
+    char* parent = NULL; //TODO:get parent disk id use qemuAliasDiskDriveQuorumFromDisk
+    char* node = "node0";  //TODO: get child disk node name use API
+    qemuDomainObjPrivatePtr priv = vm->privateData;
+    int ret = -1;
+
+    if(!drvstr)
+        return ret;
+
+    if (qemuDomainObjEnterMonitorAsync(driver, vm) < 0)
+        return ret;
+
+    if (qemuMonitorAddDrive(priv->mon, drvstr) < 0)
+        goto exit_monitor;
+
+    if (qemuMonitorBlockDevChange(priv->mon, parent, node) < 0)
+        goto exit_monitor;
+
+        ret = 0;
+
+exit_monitor:
+    ignore_value(qemuDomainObjExitMonitor(driver, vm));
+    return ret;    
+}
+
+
+static int
+qemuMigrationSrcStartBlcokReplication(virQEMUDriverPtr driver,
+                                      virDomainObjPtr vm,
+                                      const char *host,
+                                      int port)
+{
+    int ret = -1;
+    size_t i;
+    qemuDomainObjPrivatePtr priv = vm->privateData;
+    virQEMUCapsPtr qemuCaps = priv->qemuCaps;
+
+    for (i = 0; i < vm->def->ndisks; i++) {
+        char *drvstr = NULL;
+        char *diskAlias = NULL;
+        virDomainDiskDefPtr disk = vm->def->disks[i];
+        qemuDomainDiskPrivatePtr diskPriv = QEMU_DOMAIN_DISK_PRIVATE(disk);
+        int rc;
+
+        if (!(diskAlias = qemuAliasDiskDriveFromDisk(disk)))
+            continue;
+        
+        if (disk->device == VIR_DOMAIN_DISK_DEVICE_FLOPPY ||
+            disk->device == VIR_DOMAIN_DISK_DEVICE_CDROM) {
+            continue;
+        }
+
+        if (!(drvstr = qemuBuildDiskSourceReplicationPrimaryOptions(disk, qemuCaps, host, port)))
+            goto cleanup;
+    
+        if (qemuMigrationSrcDiskAddReplicationDrive(driver, vm, drvstr) < 0)
+            goto cleanup;
+
+    }
+
+    ret = 0;
+
+cleanup:
+    return ret;
+}
+
+
 static int
 qemuMigrationSrcRun(virQEMUDriverPtr driver,
                     virDomainObjPtr vm,
@@ -3474,6 +3584,9 @@ qemuMigrationSrcRun(virQEMUDriverPtr driver,
     if (migrate_flags & (QEMU_MONITOR_MIGRATE_NON_SHARED_DISK |
                          QEMU_MONITOR_MIGRATE_NON_SHARED_INC)) {
         if (mig->nbd) {
+            char* host = spec->dest.host.name;
+            int port = mig->nbd->port;
+
             /* Currently libvirt does not support setting up of the NBD
              * non-shared storage migration with TLS. As we need to honour the
              * VIR_MIGRATE_TLS flag, we need to reject such migration until
@@ -3494,6 +3607,36 @@ qemuMigrationSrcRun(virQEMUDriverPtr driver,
                                                migrate_disks,
                                                dconn, tlsAlias, flags) < 0) {
                 goto error;
+            }
+
+            if(flags & VIR_MIGRATE_COLO)
+            {
+                /* When migration completed, QEMU will have paused the CPUs for us.
+                 * Wait for the STOP event to be processed or explicitly stop CPUs
+                 * (for old QEMU which does not send events) to release the lock state.
+                 */
+                if (priv->monJSON) {
+                    while (virDomainObjGetState(vm, NULL) == VIR_DOMAIN_RUNNING) {
+                        priv->signalStop = true;
+                        rc = virDomainObjWait(vm);
+                        priv->signalStop = false;
+                        if (rc < 0)
+                            goto error;
+                    }
+                } else if (virDomainObjGetState(vm, NULL) == VIR_DOMAIN_RUNNING &&
+                           qemuMigrationSrcSetOffline(driver, vm) < 0) {
+                    goto error;
+                }
+            
+                if (qemuMigrationSrcNBDCopyCancel(driver, vm, true,
+                                                  QEMU_ASYNC_JOB_MIGRATION_OUT,
+                                                  dconn) < 0)
+                    goto error;
+
+                if (qemuMigrationSrcStartBlcokReplication(driver, vm, host, port) < 0)
+                    goto error;
+
+                //TODO: resume vm
             }
         } else {
             /* Destination doesn't support NBD server.
@@ -3620,7 +3763,7 @@ qemuMigrationSrcRun(virQEMUDriverPtr driver,
         goto error;
     }
 
-    if (mig->nbd &&
+    if (!(flags & VIR_MIGRATE_COLO) && mig->nbd &&
         qemuMigrationSrcNBDCopyCancel(driver, vm, true,
                                       QEMU_ASYNC_JOB_MIGRATION_OUT,
                                       dconn) < 0)

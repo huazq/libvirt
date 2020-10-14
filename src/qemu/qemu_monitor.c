@@ -3480,6 +3480,19 @@ qemuMonitorGetBlockJobInfo(qemuMonitorPtr mon,
 
 
 int
+qemuMonitorBlockDevChange(qemuMonitorPtr mon,
+                                const char *parent,
+                                const char *node)
+{
+    VIR_DEBUG("parent=%s,node=%s", parent, node);
+
+    QEMU_CHECK_MONITOR(mon);
+
+    return qemuMonitorJSONBlockDevChange(mon, jobname);
+}
+
+
+int
 qemuMonitorSetBlockIoThrottle(qemuMonitorPtr mon,
                               const char *drivealias,
                               const char *qomid,

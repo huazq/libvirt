@@ -666,6 +666,7 @@ struct _virDomainDiskDef {
     int snapshot; /* virDomainSnapshotLocation, snapshot_conf.h */
     int startupPolicy; /* enum virDomainStartupPolicy */
     bool transient;
+    bool quorum; /* source is child of quorum drive */
     virDomainDeviceInfo info;
     int rawio; /* enum virTristateBool */
     int sgio; /* enum virDomainDeviceSGIO */

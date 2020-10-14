@@ -230,6 +230,17 @@ struct _virStorageSourceInitiatorDef {
     char *iqn; /* Initiator IQN */
 };
 
+typedef enum {
+    VIR_STORAGE_REPLICATION_MODE_NONE,
+
+    VIR_STORAGE_REPLICATION_MODE_PRIMARY,
+    VIR_STORAGE_REPLICATION_MODE_SECONDARY,
+
+    VIR_STORAGE_REPLICATION_MODE_LAST,
+} virStorageReplicationMode;
+
+VIR_ENUM_DECL(virStorageReplicationMode);
+
 typedef struct _virStorageDriverData virStorageDriverData;
 typedef virStorageDriverData *virStorageDriverDataPtr;
 
@@ -329,6 +340,7 @@ struct _virStorageSource {
     int cachemode; /* enum virDomainDiskCache */
     int discard; /* enum virDomainDiskDiscard */
     int detect_zeroes; /* enum virDomainDiskDetectZeroes */
+    int replication_mode; /*enum virDomainDiskReplicationMode*/
 
     bool floppyimg; /* set to true if the storage source is going to be used
                        as a source for floppy drive */

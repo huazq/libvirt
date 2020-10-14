@@ -4950,6 +4950,36 @@ qemuMonitorJSONDrivePivot(qemuMonitorPtr mon,
 }
 
 
+int
+qemuMonitorJSONBlockDevChange(qemuMonitorPtr mon,
+                                const char *parent,
+                                const char *node)
+{
+    int ret = -1;
+    virJSONValuePtr cmd;
+    virJSONValuePtr reply = NULL;
+
+    cmd = qemuMonitorJSONMakeCommand("x-blockdev-change",
+                                     "s:parent", parent,
+                                     "s:node", node,
+                                     NULL);
+    if (!cmd)
+        return -1;
+
+    if (qemuMonitorJSONCommand(mon, cmd, &reply) < 0)
+        goto cleanup;
+
+    if (qemuMonitorJSONCheckError(cmd, reply) < 0)
+        goto cleanup;
+
+    ret = 0;
+ cleanup:
+    virJSONValueFree(cmd);
+    virJSONValueFree(reply);
+    return ret;
+}
+
+
 int qemuMonitorJSONOpenGraphics(qemuMonitorPtr mon,
                                 const char *protocol,
                                 const char *fdname,

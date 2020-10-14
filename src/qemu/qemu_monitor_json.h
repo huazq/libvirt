@@ -321,6 +321,11 @@ int qemuMonitorJSONBlockJobSetSpeed(qemuMonitorPtr mon,
 virHashTablePtr qemuMonitorJSONGetAllBlockJobInfo(qemuMonitorPtr mon)
     ATTRIBUTE_NONNULL(1);
 
+int qemuMonitorJSONBlockDevChange(qemuMonitorPtr mon,
+                                const char *parent,
+                                const char *node)
+    ATTRIBUTE_NONNULL(1) ATTRIBUTE_NONNULL(2)  ATTRIBUTE_NONNULL(3);
+
 int qemuMonitorJSONSetLink(qemuMonitorPtr mon,
                            const char *name,
                            virDomainNetInterfaceLinkState state);

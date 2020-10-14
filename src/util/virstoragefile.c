@@ -101,6 +101,13 @@ VIR_ENUM_IMPL(virStorageAuth,
               VIR_STORAGE_AUTH_TYPE_LAST,
               "none", "chap", "ceph")
 
+VIR_ENUM_IMPL(virStorageReplicationMode,
+              VIR_STORAGE_REPLICATION_MODE_LAST,
+              "none",
+              "primary",
+              "secondary")
+
+
 enum lv_endian {
     LV_LITTLE_ENDIAN = 1, /* 1234 */
     LV_BIG_ENDIAN         /* 4321 */

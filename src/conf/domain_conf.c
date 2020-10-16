@@ -24385,8 +24385,8 @@ virDomainDiskDefFormat(virBufferPtr buf,
     if (def->src->replication_mode != VIR_STORAGE_REPLICATION_MODE_NONE) {
         virBufferAsprintf(buf, "<replication mode='%s'",
                           virStorageReplicationModeTypeToString(def->src->replication_mode));
+        virBufferAddLit(buf, "/>\n");
     }
-    virBufferAddLit(buf, "/>\n");
 
     virBufferEscapeString(buf, "<backenddomain name='%s'/>\n", def->domain_name);
 

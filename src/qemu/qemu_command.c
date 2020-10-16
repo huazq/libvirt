@@ -2589,7 +2589,7 @@ qemuBuildDiskQuorumCommandLine(virDomainDiskDefPtr disk,
     char *backendAlias = NULL;
     char *quorumAlias = NULL;
 
-    virBufferAddLit(&opt, "-drive if=none");
+    virBufferAddLit(&opt, "if=none");
 
     if(!(quorumAlias = qemuAliasDiskDriveQuorumFromDisk(disk)))
         goto error;
@@ -2636,7 +2636,7 @@ qemuBuildDiskCommandLine(virCommandPtr cmd,
     {
         if (!(optstr = qemuBuildDiskQuorumCommandLine(disk, qemuCaps)))
             return -1;
-        virCommandAddArg(cmd, optstr);
+        virCommandAddArgList(cmd, "-drive", optstr, NULL);
         VIR_FREE(optstr);
     }       
 

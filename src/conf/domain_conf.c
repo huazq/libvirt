@@ -24226,6 +24226,10 @@ virDomainDiskDefFormatDriver(virBufferPtr buf,
     if (disk->queues)
         virBufferAsprintf(&driverBuf, " queues='%u'", disk->queues);
 
+    if (disk->quorum)
+        virBufferAddLit(&driverBuf, " quorum='on'");
+
+
     virDomainVirtioOptionsFormat(&driverBuf, disk->virtio);
 
     return virXMLFormatElement(buf, "driver", &driverBuf, NULL);
@@ -24377,6 +24381,12 @@ virDomainDiskDefFormat(virBufferPtr buf,
     if (virDomainDiskBackingStoreFormat(buf, def->src->backingStore,
                                         xmlopt, flags) < 0)
         return -1;
+
+    if (def->src->replication_mode != VIR_STORAGE_REPLICATION_MODE_NONE) {
+        virBufferAsprintf(buf, "<replication mode='%s'",
+                          virStorageReplicationModeTypeToString(def->src->replication_mode));
+    }
+    virBufferAddLit(buf, "/>\n");
 
     virBufferEscapeString(buf, "<backenddomain name='%s'/>\n", def->domain_name);
 

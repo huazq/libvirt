@@ -2126,6 +2126,11 @@ qemuBuildDiskDeviceStr(const virDomainDef *def,
         if (!(backendAlias = qemuAliasDiskDriveQuorumFromDisk(disk)))
             goto error;
     }
+    else if(disk->src && disk->src->replication_mode == VIR_STORAGE_REPLICATION_MODE_SECONDARY)
+    {
+        if(!(backendAlias = qemuAliasReplicationActiveFromDisk(disk)))
+            goto error;
+    }
     else
     {
         if (qemuDomainDiskGetBackendAlias(disk, qemuCaps, &backendAlias) < 0)

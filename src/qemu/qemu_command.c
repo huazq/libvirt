@@ -2399,10 +2399,9 @@ qemuBuildBlockStorageSourceAttachDataCommandline(virCommandPtr cmd,
 }
 
 
-static int
-qemuBuildDiskSourceReplicationSecondaryOptions(virCommandPtr cmd,
-                                         virDomainDiskDefPtr disk,
-                                         virQEMUCapsPtr qemuCaps)
+static char*
+qemuBuildDiskSourceReplicationSecondaryOptions(virDomainDiskDefPtr disk,
+                                               virQEMUCapsPtr qemuCaps)
 {
     virBuffer opt = VIR_BUFFER_INITIALIZER;
     qemuDomainStorageSourcePrivatePtr srcpriv;
@@ -2410,55 +2409,58 @@ qemuBuildDiskSourceReplicationSecondaryOptions(virCommandPtr cmd,
     virStorageSourcePtr active;
     virStorageSourcePtr hidden;
     char *activeAlias = NULL;
+    char *topidAlias = NULL;
     char *backendAlias = NULL;
-    char *optstr = NULL;
     char *source = NULL;
-    int ret = -1;
 
     if (disk->device == VIR_DOMAIN_DISK_DEVICE_FLOPPY ||
         disk->device == VIR_DOMAIN_DISK_DEVICE_CDROM) {
-        goto cleanup;
+        goto error;
     }
 
     if (!disk->src->backingStore || 
         virStorageSourceIsEmpty(disk->src->backingStore)) {
-        goto cleanup;
+        goto error;
     }
     active = disk->src->backingStore;
 
     if (!active->backingStore || 
         virStorageSourceIsEmpty(active->backingStore)) {
-        goto cleanup;
+        goto error;
     }
     hidden =active->backingStore;
 
-    virBufferAddLit(&opt, "-drive if=none");
+    virBufferAddLit(&opt, "if=none");
+
+    if(!(activeAlias = qemuAliasReplicationActiveFromDisk(disk)))
+        goto error;
 
     if(disk->quorum)
     {
-        if(!(activeAlias = qemuAliasDiskDriveQuorumFromDisk(disk)))
-            goto cleanup;
+        if(!(topidAlias = qemuAliasDiskDriveQuorumFromDisk(disk)))
+            goto error;
     }
     else
     {
-        if(!(activeAlias = qemuAliasReplicationActiveFromDisk(disk)))
-            goto cleanup;
+        if(!(topidAlias = qemuAliasReplicationActiveFromDisk(disk)))
+            goto error;
     }
 
     virBufferAsprintf(&opt, ",id=%s", activeAlias);
-    virBufferAsprintf(&opt, ",driver=replication,mode=secondary,top-id=%s", activeAlias);
     VIR_FREE(activeAlias);
+    virBufferAsprintf(&opt, ",driver=replication,mode=secondary,top-id=%s", topidAlias);
+    VIR_FREE(topidAlias);
 
     srcpriv = QEMU_DOMAIN_STORAGE_SOURCE_PRIVATE(active);
     if (srcpriv) {
         secinfo = srcpriv->secinfo;
     }
     if (qemuGetDriveSourceString(active, secinfo, &source) < 0)
-        goto cleanup;
+        goto error;
     
     if(!source)
     {
-        goto cleanup;
+        goto error;
     }
 
     virBufferAddLit(&opt, ",file.file.filename=");
@@ -2473,20 +2475,21 @@ qemuBuildDiskSourceReplicationSecondaryOptions(virCommandPtr cmd,
         secinfo = srcpriv->secinfo;
     }
     if (qemuGetDriveSourceString(hidden, secinfo, &source) < 0)
-        goto cleanup;
+        goto error;
     
     if(!source)
     {
-        goto cleanup;
+        goto error;
     }
+
     virBufferAddLit(&opt, ",file.backing.file.filename=");
     virQEMUBuildBufferEscapeComma(&opt, source);
     VIR_FREE(source);
-    virBufferAsprintf(&opt, "file.backing.driver=%s",
+    virBufferAsprintf(&opt, ",file.backing.driver=%s",
                       virStorageFileFormatTypeToString(hidden->format));
 
     if (qemuDomainDiskGetBackendAlias(disk, qemuCaps, &backendAlias) < 0)
-        goto cleanup;
+        goto error;
 
     if (backendAlias)
     {
@@ -2494,12 +2497,20 @@ qemuBuildDiskSourceReplicationSecondaryOptions(virCommandPtr cmd,
         VIR_FREE(backendAlias);
     }
     
-    virCommandAddArg(cmd, optstr);
-    VIR_FREE(optstr);
 
+    if (virBufferCheckError(&opt) < 0)
+        goto error;
+
+    VIR_DEBUG("build replication driver options");
+
+    return virBufferContentAndReset(&opt); 
     
- cleanup:
-    return ret;
+ error:
+    VIR_FREE(activeAlias);
+    VIR_FREE(topidAlias);
+    VIR_FREE(backendAlias);
+    virBufferFreeAndReset(&opt);
+    return NULL;
 }
 
 
@@ -2564,8 +2575,11 @@ qemuBuildDiskSourceCommandLine(virCommandPtr cmd,
 
     if(disk->src->replication_mode != VIR_STORAGE_REPLICATION_MODE_NONE)
     {
-         if(qemuBuildDiskSourceReplicationSecondaryOptions(cmd, disk, qemuCaps) < 0)
-         goto cleanup;
+        char *optstr= NULL;
+        if (!(optstr = qemuBuildDiskSourceReplicationSecondaryOptions(disk, qemuCaps)))
+            goto cleanup;
+        virCommandAddArgList(cmd, "-drive", optstr, NULL);
+        VIR_FREE(optstr);
     }
 
     ret = 0;

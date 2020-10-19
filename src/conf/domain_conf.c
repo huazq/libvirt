@@ -9910,6 +9910,18 @@ virDomainDiskDefParseXML(virDomainXMLOptionPtr xmlopt,
             goto error;
     }
 
+    if (def->src->replication_mode != VIR_STORAGE_REPLICATION_MODE_NONE)
+    {
+        if(!def->src ||
+           !def->src->backingStore ||
+           !def->src->backingStore->backingStore)
+        {
+            virReportError(VIR_ERR_XML_ERROR,
+                           _("replication must be with backingStore"));
+            goto error;
+        }
+    }
+
     if (flags & VIR_DOMAIN_DEF_PARSE_STATUS &&
         virDomainDiskDefParsePrivateData(ctxt, def, xmlopt) < 0)
         goto error;

@@ -6169,8 +6169,10 @@ qemuProcessPrepareHostStorage(virQEMUDriverPtr driver,
         if (virStorageSourceIsEmpty(disk->src))
             continue;
 
-        /* backing chain needs to be redetected if we aren't using blockdev */
-        if (!blockdev)
+        /* backing chain needs to be redetected if we aren't using blockdev,
+         * but if config replication do not redetect backing chain
+         */
+        if (!blockdev && disk->src->replication_mode != VIR_STORAGE_REPLICATION_MODE_SECONDARY)
             virStorageSourceBackingStoreClear(disk->src);
 
         /*

@@ -2617,7 +2617,7 @@ qemuBuildDiskQuorumCommandLine(virDomainDiskDefPtr disk,
 
     virBufferAddLit(&opt, ",driver=quorum,read-pattern=fifo,vote-threshold=1");
 
-    if(disk->src->replication_mode != VIR_STORAGE_REPLICATION_MODE_SECONDARY)
+    if(disk->src->replication_mode == VIR_STORAGE_REPLICATION_MODE_SECONDARY)
     {
         if(!(childAlias = qemuAliasReplicationActiveFromDisk(disk)))
             goto error;

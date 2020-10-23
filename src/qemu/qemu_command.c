@@ -2605,7 +2605,7 @@ qemuBuildDiskQuorumCommandLine(virDomainDiskDefPtr disk,
                                virQEMUCapsPtr qemuCaps)
 {
     virBuffer opt = VIR_BUFFER_INITIALIZER;
-    char *backendAlias = NULL;
+    char *childAlias = NULL;
     char *quorumAlias = NULL;
 
     virBufferAddLit(&opt, "if=none");
@@ -2617,13 +2617,21 @@ qemuBuildDiskQuorumCommandLine(virDomainDiskDefPtr disk,
 
     virBufferAddLit(&opt, ",driver=quorum,read-pattern=fifo,vote-threshold=1");
 
-    if (qemuDomainDiskGetBackendAlias(disk, qemuCaps, &backendAlias) < 0)
-        goto error;
-
-    if (backendAlias)
+    if(disk->src->replication_mode != VIR_STORAGE_REPLICATION_MODE_SECONDARY)
     {
-        virBufferAsprintf(&opt, ",children.0=%s", backendAlias);
-        VIR_FREE(backendAlias);
+        if(!(childAlias = qemuAliasReplicationActiveFromDisk(disk)))
+            goto error;
+    }
+    else
+    {
+        if (qemuDomainDiskGetBackendAlias(disk, qemuCaps, &childAlias) < 0)
+            goto error;
+    }
+
+    if (childAlias)
+    {
+        virBufferAsprintf(&opt, ",children.0=%s", childAlias);
+        VIR_FREE(childAlias);
     }
 
     if (virBufferCheckError(&opt) < 0)
@@ -2633,7 +2641,7 @@ qemuBuildDiskQuorumCommandLine(virDomainDiskDefPtr disk,
 
  error:
     VIR_FREE(quorumAlias);
-    VIR_FREE(backendAlias);
+    VIR_FREE(childAlias);
     virBufferFreeAndReset(&opt);
     return NULL;
 }

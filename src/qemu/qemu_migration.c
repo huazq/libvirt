@@ -844,7 +844,8 @@ qemuMigrationSrcNBDStorageCopyBlockdev(virQEMUDriverPtr driver,
 static int
 qemuMigrationSrcNBDStorageCopyDriveMirror(virQEMUDriverPtr driver,
                                           virDomainObjPtr vm,
-                                          const char *diskAlias,
+                                          const char *srcDiskAlias,
+                                          const char *dstDiskAlias,
                                           const char *host,
                                           int port,
                                           unsigned long long mirror_speed,
@@ -856,11 +857,11 @@ qemuMigrationSrcNBDStorageCopyDriveMirror(virQEMUDriverPtr driver,
 
     if (strchr(host, ':')) {
         if (virAsprintf(&nbd_dest, "nbd:[%s]:%d:exportname=%s",
-                        host, port, diskAlias) < 0)
+                        host, port, dstDiskAlias) < 0)
             goto cleanup;
     } else {
         if (virAsprintf(&nbd_dest, "nbd:%s:%d:exportname=%s",
-                        host, port, diskAlias) < 0)
+                        host, port, dstDiskAlias) < 0)
             goto cleanup;
     }
 
@@ -869,7 +870,7 @@ qemuMigrationSrcNBDStorageCopyDriveMirror(virQEMUDriverPtr driver,
         goto cleanup;
 
     mon_ret = qemuMonitorDriveMirror(qemuDomainGetMonitor(vm),
-                                     diskAlias, nbd_dest, "raw",
+                                     srcDiskAlias, nbd_dest, "raw",
                                      mirror_speed, 0, 0, mirror_flags);
 
     if (qemuDomainObjExitMonitor(driver, vm) < 0 || mon_ret < 0)
@@ -920,6 +921,7 @@ qemuMigrationSrcNBDStorageCopy(virQEMUDriverPtr driver,
     int port;
     size_t i;
     char *diskAlias = NULL;
+    char *quorumAlias = NULL;
     unsigned long long mirror_speed = speed;
     unsigned int mirror_flags = VIR_DOMAIN_BLOCK_REBASE_REUSE_EXT;
     int rv;
@@ -951,6 +953,12 @@ qemuMigrationSrcNBDStorageCopy(virQEMUDriverPtr driver,
         if (!qemuMigrationAnyCopyDisk(disk, nmigrate_disks, migrate_disks))
             continue;
 
+        if (disk->quorum)
+        {
+            if(!(quorumAlias = qemuAliasDiskDriveQuorumFromDisk(disk)))
+                goto cleanup;
+        }
+        
         if (!(diskAlias = qemuAliasDiskDriveFromDisk(disk)))
             goto cleanup;
 
@@ -964,7 +972,8 @@ qemuMigrationSrcNBDStorageCopy(virQEMUDriverPtr driver,
                                                         mirror_flags,
                                                         tlsAlias);
         } else {
-            rc = qemuMigrationSrcNBDStorageCopyDriveMirror(driver, vm, diskAlias,
+            rc = qemuMigrationSrcNBDStorageCopyDriveMirror(driver, vm, quorumAlias ? quorumAlias :diskAlias,
+                                                           diskAlias,
                                                            host, port,
                                                            mirror_speed,
                                                            mirror_flags);
@@ -975,6 +984,7 @@ qemuMigrationSrcNBDStorageCopy(virQEMUDriverPtr driver,
             goto cleanup;
         }
 
+        VIR_FREE(quorumAlias);
         VIR_FREE(diskAlias);
         diskPriv->migrating = true;
 
@@ -1016,6 +1026,7 @@ qemuMigrationSrcNBDStorageCopy(virQEMUDriverPtr driver,
 
  cleanup:
     virObjectUnref(cfg);
+    VIR_FREE(quorumAlias);
     VIR_FREE(diskAlias);
     return ret;
 }

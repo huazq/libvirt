@@ -10558,6 +10558,10 @@ static const vshCmdOptDef opts_migrate[] = {
      .type = VSH_OT_BOOL,
      .help = N_("use TLS for migration")
     },
+    {.name = "colo",
+     .type = VSH_OT_BOOL,
+     .help = N_("enable vm colo feature which make vm migration to vm ft")
+    },
     {.name = NULL}
 };
 
@@ -10801,6 +10805,9 @@ doMigrate(void *opaque)
 
     if (vshCommandOptBool(cmd, "tls"))
         flags |= VIR_MIGRATE_TLS;
+
+    if (vshCommandOptBool(cmd, "colo"))
+        flags |= VIR_MIGRATE_COLO;
 
     if (flags & VIR_MIGRATE_PEER2PEER || vshCommandOptBool(cmd, "direct")) {
         if (virDomainMigrateToURI3(dom, desturi, params, nparams, flags) == 0)

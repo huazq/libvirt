@@ -2126,7 +2126,7 @@ qemuBuildDiskDeviceStr(const virDomainDef *def,
         if (!(backendAlias = qemuAliasDiskDriveQuorumFromDisk(disk)))
             goto error;
     }
-    else if(disk->src && disk->src->replication_mode == VIR_STORAGE_REPLICATION_MODE_SECONDARY)
+    else if(disk->src && disk->src->replication)
     {
         if(!(backendAlias = qemuAliasReplicationActiveFromDisk(disk)))
             goto error;
@@ -2578,7 +2578,7 @@ qemuBuildDiskSourceCommandLine(virCommandPtr cmd,
         VIR_FREE(str);
     }
 
-    if(disk->src->replication_mode != VIR_STORAGE_REPLICATION_MODE_NONE)
+    if(disk->src->replication)
     {
         char *optstr= NULL;
         if (!(optstr = qemuBuildDiskSourceReplicationSecondaryOptions(disk, qemuCaps)))
@@ -2617,7 +2617,7 @@ qemuBuildDiskQuorumCommandLine(virDomainDiskDefPtr disk,
 
     virBufferAddLit(&opt, ",driver=quorum,read-pattern=fifo,vote-threshold=1");
 
-    if(disk->src->replication_mode == VIR_STORAGE_REPLICATION_MODE_SECONDARY)
+    if(disk->src->replication)
     {
         if(!(childAlias = qemuAliasReplicationActiveFromDisk(disk)))
             goto error;

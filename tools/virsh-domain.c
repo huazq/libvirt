@@ -10560,7 +10560,7 @@ static const vshCmdOptDef opts_migrate[] = {
     },
     {.name = "colo",
      .type = VSH_OT_BOOL,
-     .help = N_("enable vm colo feature which make vm migration to vm ft")
+     .help = N_("enable vm colo feature which turn vm migration into vm fault tolerence")
     },
     {.name = NULL}
 };

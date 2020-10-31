@@ -9724,12 +9724,7 @@ virDomainDiskDefParseXML(virDomainXMLOptionPtr xmlopt,
                                _("'replication' only support disk device 'disk' or 'lun'"));
                 goto cleanup;
             }
-            if ((tmp = virXMLPropString(cur, "mode")) &&
-                (def->src->replication_mode = virStorageReplicationModeTypeFromString(tmp)) <= 0) {
-                virReportError(VIR_ERR_CONFIG_UNSUPPORTED,
-                               _("unknown replication mode '%s'"), tmp);
-                goto error;
-            }
+            def->src->replication = true;
             VIR_FREE(tmp);
         } 
     }
@@ -9910,7 +9905,7 @@ virDomainDiskDefParseXML(virDomainXMLOptionPtr xmlopt,
             goto error;
     }
 
-    if (def->src->replication_mode != VIR_STORAGE_REPLICATION_MODE_NONE)
+    if (def->src->replication)
     {
         if(!def->src ||
            !def->src->backingStore ||
@@ -24394,10 +24389,8 @@ virDomainDiskDefFormat(virBufferPtr buf,
                                         xmlopt, flags) < 0)
         return -1;
 
-    if (def->src->replication_mode != VIR_STORAGE_REPLICATION_MODE_NONE) {
-        virBufferAsprintf(buf, "<replication mode='%s'",
-                          virStorageReplicationModeTypeToString(def->src->replication_mode));
-        virBufferAddLit(buf, "/>\n");
+    if (def->src->replication) {
+        virBufferAddLit(buf, "<replication/>\n");
     }
 
     virBufferEscapeString(buf, "<backenddomain name='%s'/>\n", def->domain_name);

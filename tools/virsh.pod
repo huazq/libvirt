@@ -1992,7 +1992,8 @@ respectively. I<--comp-xbzrle-cache> sets size of page cache in bytes.
 Providing I<--tls> causes the migration to use the host configured TLS setup
 (see migrate_tls_x509_cert_dir in /etc/libvirt/qemu.conf) in order to perform
 the migration of the domain. Usage requires proper TLS setup for both source
-and target.I<--colo> enable colo feature in qemu,which provide ability of vm ft
+and target.I<--colo> enable colo feature of migration,which turn migration 
+into vm fault tolerence
 
 Running migration can be canceled by interrupting virsh (usually using
 C<Ctrl-C>) or by B<domjobabort> command sent from another virsh instance.

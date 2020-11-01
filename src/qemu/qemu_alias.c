@@ -27,6 +27,7 @@
 #include "virstring.h"
 
 #define QEMU_DRIVE_HOST_PREFIX "drive-"
+#define QEMU_DRIVE_NODE_HOST_PREFIX "node-"
 #define QEMU_DRIVE_QUORUM_HOST_PREFIX "quorum-"
 #define QEMU_DRIVE_REPLICATION_ACTIVE_HOST_PREFIX "active-"
 
@@ -711,6 +712,32 @@ qemuAliasDiskDriveFromDisk(const virDomainDiskDef *disk)
 
     return ret;
 }
+
+
+/* qemuAliasDiskDriveNodeFromDisk
+ * @disk: Pointer to a disk definition
+ *
+ * Generate and return an alias for the nodename of device disk 
+ *
+ * Returns NULL with error or a string containing the alias
+ */
+char *
+qemuAliasDiskDriveNodeFromDisk(const virDomainDiskDef *disk)
+{
+    char *ret;
+
+    if (!disk->info.alias) {
+        virReportError(VIR_ERR_INVALID_ARG, "%s",
+                       _("disk does not have an alias"));
+        return NULL;
+    }
+
+    ignore_value(virAsprintf(&ret, "%s%s", QEMU_DRIVE_NODE_HOST_PREFIX,
+                             disk->info.alias));
+
+    return ret;
+}
+
 
 /* qemuAliasDiskDriveQuorumFromDisk
  * @disk: Pointer to a disk definition

@@ -3365,31 +3365,18 @@ qemuMigrationSrcContinue(virQEMUDriverPtr driver,
 
 
 static char *
-qemuBuildDiskSourceReplicationPrimaryOptions(virDomainDiskDefPtr disk,
-                                             virQEMUCapsPtr qemuCaps,
-                                             const char *host,
-                                             int port)
+qemuBuildDiskSourceReplicationPrimaryOptions(const char *host,
+                                             int port,
+                                             char *export,
+	                                     char *nodename)
 {
     virBuffer opt = VIR_BUFFER_INITIALIZER;
-    char *backendAlias = NULL;
-    char *nodename = NULL;
 
     virBufferAddLit(&opt, "-n buddy driver=replication,mode=primary");
 
     virBufferAsprintf(&opt, ",file.driver=nbd,file.host=%s,file.port=%d", host, port);
 
-    if (disk->quorum) {
-        if (!(backendAlias = qemuAliasDiskDriveQuorumFromDisk(disk)))
-            goto error;
-    }
-    else
-    {
-        if (qemuDomainDiskGetBackendAlias(disk, qemuCaps, &backendAlias) < 0)
-            goto error;
-    }
-    
-    virBufferAsprintf(&opt, ",file.export=%s,node-name=%s", backendAlias, nodename);
-    VIR_FREE(backendAlias);
+    virBufferAsprintf(&opt, ",file.export=%s,node-name=%s", export, nodename);
 
     if (virBufferCheckError(&opt) < 0)
         goto error;
@@ -3397,7 +3384,6 @@ qemuBuildDiskSourceReplicationPrimaryOptions(virDomainDiskDefPtr disk,
     return virBufferContentAndReset(&opt);
 
  error:
-    VIR_FREE(backendAlias);
     virBufferFreeAndReset(&opt);
     return NULL;
 }
@@ -3406,10 +3392,10 @@ qemuBuildDiskSourceReplicationPrimaryOptions(virDomainDiskDefPtr disk,
 static int
 qemuMigrationSrcDiskAddReplicationDrive(virQEMUDriverPtr driver,
                                         virDomainObjPtr vm,
-                                        char* drvstr)
+                                        char* drvstr,
+                                        char* parent,
+                                        char* node)
 {
-    char* parent = NULL; //TODO:get parent disk id use qemuAliasDiskDriveQuorumFromDisk
-    const char* node = "node0";  //TODO: get child disk node name use API
     qemuDomainObjPrivatePtr priv = vm->privateData;
     int ret = -1;
 
@@ -3440,33 +3426,51 @@ qemuMigrationSrcStartBlcokReplication(virQEMUDriverPtr driver,
 {
     int ret = -1;
     size_t i;
-    qemuDomainObjPrivatePtr priv = vm->privateData;
-    virQEMUCapsPtr qemuCaps = priv->qemuCaps;
+    char *drvstr = NULL;
+    char *diskAlias = NULL;
+    char *quorumAlias = NULL;
+    char *nodename = NULL;
 
     for (i = 0; i < vm->def->ndisks; i++) {
-        char *drvstr = NULL;
-        char *diskAlias = NULL;
         virDomainDiskDefPtr disk = vm->def->disks[i];
 
-        if (!(diskAlias = qemuAliasDiskDriveFromDisk(disk)))
-            continue;
-        
         if (disk->device == VIR_DOMAIN_DISK_DEVICE_FLOPPY ||
             disk->device == VIR_DOMAIN_DISK_DEVICE_CDROM) {
             continue;
         }
 
-        if (!(drvstr = qemuBuildDiskSourceReplicationPrimaryOptions(disk, qemuCaps, host, port)))
+        if(!disk->quorum)
+            continue;
+
+        if (!(diskAlias = qemuAliasDiskDriveFromDisk(disk)))
+            continue;
+
+        if (!(quorumAlias = qemuAliasDiskDriveQuorumFromDisk(disk)))
+            goto cleanup;
+
+        if (!(nodename = qemuAliasDiskDriveNodeFromDisk(disk)))
+            goto cleanup;
+
+        if (!(drvstr = qemuBuildDiskSourceReplicationPrimaryOptions(host, port, diskAlias, nodename)))
             goto cleanup;
     
-        if (qemuMigrationSrcDiskAddReplicationDrive(driver, vm, drvstr) < 0)
+        if (qemuMigrationSrcDiskAddReplicationDrive(driver, vm, drvstr, quorumAlias, nodename) < 0)
             goto cleanup;
+
+        VIR_FREE(drvstr);
+        VIR_FREE(diskAlias);
+        VIR_FREE(quorumAlias);
+        VIR_FREE(nodename);
 
     }
 
     ret = 0;
 
 cleanup:
+    VIR_FREE(drvstr);
+    VIR_FREE(diskAlias);
+    VIR_FREE(quorumAlias);
+    VIR_FREE(nodename);
     return ret;
 }
 
@@ -3619,6 +3623,7 @@ qemuMigrationSrcRun(virQEMUDriverPtr driver,
 
             if(flags & VIR_MIGRATE_COLO)
             {
+
                 /* When migration completed, QEMU will have paused the CPUs for us.
                  * Wait for the STOP event to be processed or explicitly stop CPUs
                  * (for old QEMU which does not send events) to release the lock state.
@@ -3644,7 +3649,6 @@ qemuMigrationSrcRun(virQEMUDriverPtr driver,
                 if (qemuMigrationSrcStartBlcokReplication(driver, vm, host, port) < 0)
                     goto error;
 
-                //TODO: resume vm
             }
         } else {
             /* Destination doesn't support NBD server.

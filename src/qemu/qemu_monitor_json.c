@@ -2298,6 +2298,9 @@ int qemuMonitorJSONGetBlockInfo(qemuMonitorPtr mon,
         if (!(thisdev = qemuMonitorJSONGetBlockDevDevice(dev)))
             goto cleanup;
 
+	if (STRPREFIX(thisdev, "quorum-"))
+            continue;
+
         thisdev = qemuAliasDiskDriveSkipPrefix(thisdev);
         qdev = virJSONValueObjectGetString(dev, "qdev");
 

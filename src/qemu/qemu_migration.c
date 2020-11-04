@@ -651,8 +651,15 @@ qemuMigrationSrcNBDCopyCancelOne(virQEMUDriverPtr driver,
         goto cleanup;
     }
 
-    if (!(diskAlias = qemuAliasDiskDriveFromDisk(disk)))
-        return -1;
+    if (disk->quorum)
+    {
+        if(!(diskAlias = qemuAliasDiskDriveQuorumFromDisk(disk)))
+            goto cleanup;
+    }
+    else if (!(diskAlias = qemuAliasDiskDriveFromDisk(disk)))
+    {
+        goto cleanup;
+    }
 
     if (qemuDomainObjEnterMonitorAsync(driver, vm, asyncJob) < 0)
         goto cleanup;
@@ -3628,15 +3635,7 @@ qemuMigrationSrcRun(virQEMUDriverPtr driver,
                  * Wait for the STOP event to be processed or explicitly stop CPUs
                  * (for old QEMU which does not send events) to release the lock state.
                  */
-                if (priv->monJSON) {
-                    while (virDomainObjGetState(vm, NULL) == VIR_DOMAIN_RUNNING) {
-                        priv->signalStop = true;
-                        rc = virDomainObjWait(vm);
-                        priv->signalStop = false;
-                        if (rc < 0)
-                            goto error;
-                    }
-                } else if (virDomainObjGetState(vm, NULL) == VIR_DOMAIN_RUNNING &&
+                if (virDomainObjGetState(vm, NULL) == VIR_DOMAIN_RUNNING &&
                            qemuMigrationSrcSetOffline(driver, vm) < 0) {
                     goto error;
                 }

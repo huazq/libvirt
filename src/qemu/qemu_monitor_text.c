@@ -76,7 +76,7 @@ int qemuMonitorTextAddDrive(qemuMonitorPtr mon,
 
     /* 'dummy' here is just a placeholder since there is no PCI
      * address required when attaching drives to a controller */
-    if (virAsprintf(&cmd, "drive_add dummy %s", safe_str) < 0)
+    if (virAsprintf(&cmd, "drive_add %s", safe_str) < 0)
         goto cleanup;
 
     if (qemuMonitorHMPCommand(mon, cmd, &reply) < 0)

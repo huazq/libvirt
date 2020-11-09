@@ -1045,6 +1045,7 @@ qemuMigrationParamsCheck(virQEMUDriverPtr driver,
     qemuMigrationCapability cap;
     qemuMigrationParty party;
     size_t i;
+    bool colo_enabled = false;
 
     if (asyncJob == QEMU_ASYNC_JOB_MIGRATION_OUT)
         party = QEMU_MIGRATION_SOURCE;
@@ -1062,6 +1063,9 @@ qemuMigrationParamsCheck(virQEMUDriverPtr driver,
                            qemuMigrationCapabilityTypeToString(cap));
             return -1;
         }
+
+        if (state && cap == QEMU_MIGRATION_CAP_COLO)
+            colo_enabled = true;
     }
 
     for (i = 0; i < ARRAY_CARDINALITY(qemuMigrationParamsAlwaysOn); i++) {
@@ -1088,6 +1092,12 @@ qemuMigrationParamsCheck(virQEMUDriverPtr driver,
                       qemuMigrationCapabilityTypeToString(cap));
             ignore_value(virBitmapSetBit(migParams->caps, cap));
         }
+    }
+
+    if (colo_enabled) {
+        ignore_value(virBitmapClearBit(migParams->caps,
+                               QEMU_MIGRATION_CAP_PAUSE_BEFORE_SWITCHOVER));
+
     }
 
     /*

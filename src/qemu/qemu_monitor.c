@@ -174,7 +174,8 @@ VIR_ENUM_IMPL(qemuMonitorMigrationStatus,
               "active", "pre-switchover",
               "device", "postcopy-active",
               "completed", "failed",
-              "cancelling", "cancelled")
+              "cancelling", "cancelled",
+              "colo")
 
 VIR_ENUM_IMPL(qemuMonitorVMStatus,
               QEMU_MONITOR_VM_STATUS_LAST,

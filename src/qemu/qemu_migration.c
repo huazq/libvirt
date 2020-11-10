@@ -1361,6 +1361,10 @@ qemuMigrationUpdateJobType(qemuDomainJobInfoPtr jobInfo)
         jobInfo->status = QEMU_DOMAIN_JOB_STATUS_MIGRATING;
         break;
 
+    case QEMU_MONITOR_MIGRATION_STATUS_COLO:
+        jobInfo->status = QEMU_DOMAIN_JOB_STATUS_COLO;
+        break;
+
     case QEMU_MONITOR_MIGRATION_STATUS_SETUP:
     case QEMU_MONITOR_MIGRATION_STATUS_ACTIVE:
     case QEMU_MONITOR_MIGRATION_STATUS_CANCELLING:
@@ -1464,6 +1468,7 @@ qemuMigrationJobCheckStatus(virQEMUDriverPtr driver,
     case QEMU_DOMAIN_JOB_STATUS_QEMU_COMPLETED:
     case QEMU_DOMAIN_JOB_STATUS_POSTCOPY:
     case QEMU_DOMAIN_JOB_STATUS_PAUSED:
+    case QEMU_DOMAIN_JOB_STATUS_COLO:
         break;
     }
 
@@ -1481,6 +1486,7 @@ enum qemuMigrationCompletedFlags {
     QEMU_MIGRATION_COMPLETED_CHECK_STORAGE  = (1 << 1),
     QEMU_MIGRATION_COMPLETED_POSTCOPY       = (1 << 2),
     QEMU_MIGRATION_COMPLETED_PRE_SWITCHOVER = (1 << 3),
+    QEMU_MIGRATION_COMPLETED_COLO           = (1 << 4),
 };
 
 
@@ -1543,6 +1549,16 @@ qemuMigrationAnyCompleted(virQEMUDriverPtr driver,
         return 1;
     }
 
+    /* COLO is an on-going process with executes migrations continously until
+     * it is turned off. The current solution to not keep the lock is by
+     * completing the migration job early.
+     */
+    if (flags & QEMU_MIGRATION_COMPLETED_COLO &&
+        jobInfo->status == QEMU_DOMAIN_JOB_STATUS_COLO) {
+        VIR_DEBUG("Completing migration job early in COLO mode");
+        return 1;
+    }
+
     if (jobInfo->status == QEMU_DOMAIN_JOB_STATUS_QEMU_COMPLETED)
         return 1;
     else
@@ -1553,6 +1569,7 @@ qemuMigrationAnyCompleted(virQEMUDriverPtr driver,
     case QEMU_DOMAIN_JOB_STATUS_MIGRATING:
     case QEMU_DOMAIN_JOB_STATUS_POSTCOPY:
     case QEMU_DOMAIN_JOB_STATUS_PAUSED:
+    case QEMU_DOMAIN_JOB_STATUS_COLO:
         /* The migration was aborted by us rather than QEMU itself. */
         jobInfo->status = QEMU_DOMAIN_JOB_STATUS_FAILED;
         return -2;
@@ -3738,10 +3755,13 @@ qemuMigrationSrcRun(virQEMUDriverPtr driver,
         fd = -1;
     }
 
-    waitFlags = QEMU_MIGRATION_COMPLETED_PRE_SWITCHOVER;
+    if (flags & VIR_MIGRATE_COLO)
+        waitFlags = QEMU_MIGRATION_COMPLETED_COLO;
+    else
+        waitFlags = QEMU_MIGRATION_COMPLETED_PRE_SWITCHOVER;
     if (abort_on_error)
         waitFlags |= QEMU_MIGRATION_COMPLETED_ABORT_ON_ERROR;
-    if (mig->nbd)
+    if (!(flags & VIR_MIGRATE_COLO) && mig->nbd)
         waitFlags |= QEMU_MIGRATION_COMPLETED_CHECK_STORAGE;
     if (flags & VIR_MIGRATE_POSTCOPY)
         waitFlags |= QEMU_MIGRATION_COMPLETED_POSTCOPY;
@@ -3761,17 +3781,19 @@ qemuMigrationSrcRun(virQEMUDriverPtr driver,
      * Wait for the STOP event to be processed or explicitly stop CPUs
      * (for old QEMU which does not send events) to release the lock state.
      */
-    if (priv->monJSON) {
-        while (virDomainObjGetState(vm, NULL) == VIR_DOMAIN_RUNNING) {
-            priv->signalStop = true;
-            rc = virDomainObjWait(vm);
-            priv->signalStop = false;
-            if (rc < 0)
-                goto error;
+    if (!(flags & VIR_MIGRATE_COLO)) {
+        if (priv->monJSON) {
+            while (virDomainObjGetState(vm, NULL) == VIR_DOMAIN_RUNNING) {
+                priv->signalStop = true;
+                rc = virDomainObjWait(vm);
+                priv->signalStop = false;
+                if (rc < 0)
+                    goto error;
+            }
+        } else if (virDomainObjGetState(vm, NULL) == VIR_DOMAIN_RUNNING &&
+                   qemuMigrationSrcSetOffline(driver, vm) < 0) {
+            goto error;
         }
-    } else if (virDomainObjGetState(vm, NULL) == VIR_DOMAIN_RUNNING &&
-               qemuMigrationSrcSetOffline(driver, vm) < 0) {
-        goto error;
     }
 
     if (!(flags & VIR_MIGRATE_COLO) && mig->nbd &&
@@ -5141,8 +5163,10 @@ qemuMigrationDstFinish(virQEMUDriverPtr driver,
     if (mig->network && qemuMigrationDstOPDRelocate(driver, vm, mig) < 0)
         VIR_WARN("unable to provide network data for relocation");
 
-    if (qemuMigrationDstStopNBDServer(driver, vm, mig) < 0)
-        goto endjob;
+    if (!(flags & VIR_MIGRATE_COLO)) {
+        if (qemuMigrationDstStopNBDServer(driver, vm, mig) < 0)
+            goto endjob;
+    }
 
     if (qemuRefreshVirtioChannelState(driver, vm,
                                       QEMU_ASYNC_JOB_MIGRATION_IN) < 0)

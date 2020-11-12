@@ -1486,7 +1486,6 @@ enum qemuMigrationCompletedFlags {
     QEMU_MIGRATION_COMPLETED_CHECK_STORAGE  = (1 << 1),
     QEMU_MIGRATION_COMPLETED_POSTCOPY       = (1 << 2),
     QEMU_MIGRATION_COMPLETED_PRE_SWITCHOVER = (1 << 3),
-    QEMU_MIGRATION_COMPLETED_COLO           = (1 << 4),
 };
 
 
@@ -1553,8 +1552,7 @@ qemuMigrationAnyCompleted(virQEMUDriverPtr driver,
      * it is turned off. The current solution to not keep the lock is by
      * completing the migration job early.
      */
-    if (flags & QEMU_MIGRATION_COMPLETED_COLO &&
-        jobInfo->status == QEMU_DOMAIN_JOB_STATUS_COLO) {
+    if (jobInfo->status == QEMU_DOMAIN_JOB_STATUS_COLO) {
         VIR_DEBUG("Completing migration job early in COLO mode");
         return 1;
     }
@@ -3755,9 +3753,7 @@ qemuMigrationSrcRun(virQEMUDriverPtr driver,
         fd = -1;
     }
 
-    if (flags & VIR_MIGRATE_COLO)
-        waitFlags = QEMU_MIGRATION_COMPLETED_COLO;
-    else
+    if (!(flags & VIR_MIGRATE_COLO))
         waitFlags = QEMU_MIGRATION_COMPLETED_PRE_SWITCHOVER;
     if (abort_on_error)
         waitFlags |= QEMU_MIGRATION_COMPLETED_ABORT_ON_ERROR;

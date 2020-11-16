@@ -3001,16 +3001,19 @@ qemuMigrationSrcConfirmPhase(virQEMUDriverPtr driver,
         /* If guest uses SPICE and supports seamless migration we have to hold
          * up domain shutdown until SPICE server transfers its data */
         qemuMigrationSrcWaitForSpice(vm);
-
-        qemuProcessStop(driver, vm, VIR_DOMAIN_SHUTOFF_MIGRATED,
-                        QEMU_ASYNC_JOB_MIGRATION_OUT,
-                        VIR_QEMU_PROCESS_STOP_MIGRATED);
+        if (!(flags & VIR_MIGRATE_COLO)) {
+            qemuProcessStop(driver, vm, VIR_DOMAIN_SHUTOFF_MIGRATED,
+                            QEMU_ASYNC_JOB_MIGRATION_OUT,
+                            VIR_QEMU_PROCESS_STOP_MIGRATED);
+        }    
         virDomainAuditStop(vm, "migrated");
 
-        event = virDomainEventLifecycleNewFromObj(vm,
-                                         VIR_DOMAIN_EVENT_STOPPED,
-                                         VIR_DOMAIN_EVENT_STOPPED_MIGRATED);
-        virObjectEventStateQueue(driver->domainEventState, event);
+        if (!(flags & VIR_MIGRATE_COLO)) {
+            event = virDomainEventLifecycleNewFromObj(vm,
+                                             VIR_DOMAIN_EVENT_STOPPED,
+                                             VIR_DOMAIN_EVENT_STOPPED_MIGRATED);
+            virObjectEventStateQueue(driver->domainEventState, event);
+	}
         qemuDomainEventEmitJobCompleted(driver, vm);
     } else {
         virErrorPtr orig_err = virSaveLastError();

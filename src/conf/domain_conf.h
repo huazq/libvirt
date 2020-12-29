@@ -1204,6 +1204,7 @@ struct _virDomainChrSourceDef {
             char *host;
             char *service;
             bool listen;
+            bool wait;
             int protocol;
             bool tlscreds;
             int haveTLS; /* enum virTristateBool */

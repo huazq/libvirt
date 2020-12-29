@@ -1854,6 +1854,288 @@ qemuMigrationDstGetURI(const char *migrateFrom,
 }
 
 
+static int
+qemuMigrationColoProxyAddChardev(virQEMUDriverPtr driver,
+                          virDomainObjPtr vm,
+                          const char *alias,
+                          const char *host,
+                          const char *port,
+                          bool server,
+                          bool wait)
+{
+    qemuDomainObjPrivatePtr priv = vm->privateData;
+    int ret = -1;
+    virDomainChrSourceDefPtr chrSource;
+    if (!(chrSource = virDomainChrSourceDefNew(driver->xmlopt)))
+        return -1;
+
+    chrSource->type = VIR_DOMAIN_CHR_TYPE_TCP;
+    chrSource->data.tcp.listen = server;
+    if (VIR_STRDUP(chrSource->data.tcp.host, host) < 0)
+        goto cleanup;
+
+    if (VIR_STRDUP(chrSource->data.tcp.service, port) < 0)
+        goto cleanup;
+
+    chrSource->data.tcp.wait = wait;
+    if (!server) {
+        chrSource->data.tcp.reconnect.enabled = true;
+        chrSource->data.tcp.reconnect.timeout = 1;
+    }
+    
+    qemuDomainObjEnterMonitor(driver, vm);
+    if (qemuMonitorAttachCharDev(priv->mon, alias, chrSource) < 0)
+        goto exit_monitor;
+
+    ret = 0;
+
+ cleanup:
+    virDomainChrSourceDefFree(chrSource);
+    return ret;
+ exit_monitor:
+    ignore_value(qemuDomainObjExitMonitor(driver, vm));
+    goto cleanup;
+}
+
+
+static int
+qemuMigrationColoProxyAddFilter(virQEMUDriverPtr driver,
+                          virDomainObjPtr vm,
+                          const char *filter,
+                          const char *alias,
+                          const char *netdevAlias,
+                          const char *direction,
+                          const char *outdev,
+                          const char *indev)
+{
+    qemuDomainObjPrivatePtr priv = vm->privateData;
+    int ret = -1;
+    virJSONValuePtr props = NULL;
+
+    if (outdev) {
+        if (qemuMonitorCreateObjectProps(&props, filter, alias,
+                                     "s:netdev", netdevAlias,
+                                     "s:queue", direction,
+                                     "s:outdev", outdev,
+                                     NULL) < 0)
+            goto cleanup;
+    } else if (indev) {
+        if (qemuMonitorCreateObjectProps(&props, filter, alias,
+                                     "s:netdev", netdevAlias,
+                                     "s:queue", direction,
+                                     "s:indev", indev,
+                                     NULL) < 0)
+            goto cleanup;
+    } else {
+        if (qemuMonitorCreateObjectProps(&props, filter, alias,
+                                     "s:netdev", netdevAlias,
+                                     "s:queue", direction,
+                                     NULL) < 0)
+            goto cleanup;
+    }
+
+    qemuDomainObjEnterMonitor(driver, vm);
+
+    if (qemuMonitorAddObject(priv->mon, &props, NULL) < 0)
+        goto exit_monitor;
+
+    if (qemuDomainObjExitMonitor(driver, vm) < 0)
+        goto cleanup;
+
+    ret = 0;
+
+ cleanup:
+    virJSONValueFree(props);
+    return ret;
+ exit_monitor:
+    ignore_value(qemuDomainObjExitMonitor(driver, vm));
+    goto cleanup;
+}
+
+
+static int
+qemuMigrationColoProxyAddColoCompare(virQEMUDriverPtr driver,
+                          virDomainObjPtr vm,
+                          const char *filter,
+                          const char *alias,
+                          const char *primary,
+                          const char *secondary,
+                          const char *outdev,
+                          const char *iothread)
+{
+    qemuDomainObjPrivatePtr priv = vm->privateData;
+    int ret = -1;
+    virJSONValuePtr props = NULL;
+
+    if (qemuMonitorCreateObjectProps(&props, filter, alias,
+                                 "s:primary_in", primary,
+                                 "s:secondary_in", secondary,
+                                 "s:outdev", outdev,
+                                 "s:iothread", iothread,
+                                 "U:expired_scan_cycle", 500,
+                                 NULL) < 0)
+        goto cleanup;
+
+
+    qemuDomainObjEnterMonitor(driver, vm);
+
+    if (qemuMonitorAddObject(priv->mon, &props, NULL) < 0)
+        goto exit_monitor;
+
+    if (qemuDomainObjExitMonitor(driver, vm) < 0)
+        goto cleanup;
+
+    ret = 0;
+
+ cleanup:
+    virJSONValueFree(props);
+    return ret;
+ exit_monitor:
+    ignore_value(qemuDomainObjExitMonitor(driver, vm));
+    goto cleanup;
+}
+
+
+static int
+qemuMigrationSrcAddColoProxy(virQEMUDriverPtr driver,
+                          virDomainObjPtr vm,
+                          const char *host)
+{
+    int ret = -1;
+    char *netdev = NULL;
+    if (qemuMigrationColoProxyAddChardev(driver, vm, "mirror0", 
+                                         host, 
+                                         "9003",
+                                         true,
+                                         false ) < 0)
+        goto cleanup;
+
+    if (qemuMigrationColoProxyAddChardev(driver, vm, "compare0",
+                                         "127.0.0.1",
+                                         "9001",
+                                         true,
+                                         false ) < 0)
+        goto cleanup;
+
+    if (qemuMigrationColoProxyAddChardev(driver, vm, "compare0-0",
+                                         "127.0.0.1",
+                                         "9001",
+                                         false,
+                                         false ) < 0)
+        goto cleanup;
+
+    if (qemuMigrationColoProxyAddChardev(driver, vm, "compare_out",
+                                         "127.0.0.1",
+                                         "9005",
+                                         true,
+                                         false ) < 0)
+        goto cleanup;
+
+    if (qemuMigrationColoProxyAddChardev(driver, vm, "compare_out0",
+                                         "127.0.0.1",
+                                         "9005",
+                                         false,
+                                         false ) < 0)
+        goto cleanup;
+
+    if (qemuMigrationColoProxyAddChardev(driver, vm, "compare1",
+                                         host,
+                                         "9004",
+                                         true,
+                                         true ) < 0)
+        goto cleanup;
+
+    //Todo: support multiple net interface
+    if (vm->def->nets)
+        netdev = vm->def->nets[0]->info.alias;
+
+    if (qemuMigrationColoProxyAddFilter(driver, vm, "filter-mirror",
+                                         "m0",
+                                         netdev,
+                                         "tx",
+                                         "mirror0", NULL ) < 0)
+        goto cleanup;
+
+    if (qemuMigrationColoProxyAddFilter(driver, vm, "filter-redirector",
+                                         "redire0",
+                                         netdev,
+                                         "rx",
+                                         NULL, "compare_out" ) < 0)
+        goto cleanup;
+
+    if (qemuMigrationColoProxyAddFilter(driver, vm, "filter-redirector",
+                                         "redire1",
+                                         netdev,
+                                         "rx",
+                                         "compare0", NULL ) < 0)
+        goto cleanup;
+
+    if (qemuMigrationColoProxyAddColoCompare(driver, vm, "colo-compare",
+                                         "comp0",
+                                         "compare0-0",
+                                         "compare1",
+                                         "compare_out0", NULL ) < 0)
+        goto cleanup;
+
+
+
+ cleanup:
+    return ret;
+}
+
+
+static int
+qemuMigrationDstAddColoProxy(virQEMUDriverPtr driver,
+                          virDomainObjPtr vm,
+                          const char *host)
+{
+    int ret = -1;
+    char *netdev = NULL;
+
+    if (qemuMigrationColoProxyAddChardev(driver, vm, "red0",
+                                         host,
+                                         "9003",
+                                         false,
+                                         false ) < 0)
+        goto cleanup;
+
+    if (qemuMigrationColoProxyAddChardev(driver, vm, "red1",
+                                         host,
+                                         "9004",
+                                         false,
+                                         false ) < 0)
+        goto cleanup;
+
+    //Todo: support multiple net interface
+    if (vm->def->nets)
+        netdev = vm->def->nets[0]->info.alias;
+    if (qemuMigrationColoProxyAddFilter(driver, vm, "filter-redirector",
+                                         "redire0",
+                                         netdev,
+                                         "rx",
+                                         NULL, "compare_out" ) < 0)
+        goto cleanup;
+
+    if (qemuMigrationColoProxyAddFilter(driver, vm, "filter-redirector",
+                                         "redire1",
+                                         netdev,
+                                         "rx",
+                                         "compare0", NULL ) < 0)
+        goto cleanup;
+
+    if (qemuMigrationColoProxyAddFilter(driver, vm, "filter-rewriter",
+                                         "rew0",
+                                         netdev,
+                                         "all",
+                                         NULL, NULL ) < 0)
+        goto cleanup;
+
+
+ cleanup:
+    return ret;
+}
+
+
 int
 qemuMigrationDstRun(virQEMUDriverPtr driver,
                     virDomainObjPtr vm,

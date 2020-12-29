@@ -6984,8 +6984,11 @@ qemuMonitorJSONAttachCharDevCommand(const char *chrID,
 
         telnet = chr->data.tcp.protocol == VIR_DOMAIN_CHR_TCP_PROTOCOL_TELNET;
 
-        if (virJSONValueObjectAppendBoolean(data, "wait", false) < 0 ||
-            virJSONValueObjectAppendBoolean(data, "telnet", telnet) < 0 ||
+        if (chr->data.tcp.listen &&
+            virJSONValueObjectAppendBoolean(data, "wait", chr->data.tcp.wait) < 0)
+            goto cleanup;
+
+        if (virJSONValueObjectAppendBoolean(data, "telnet", telnet) < 0 ||
             virJSONValueObjectAppendBoolean(data, "server", chr->data.tcp.listen) < 0)
             goto cleanup;
         if (chr->data.tcp.tlscreds) {
